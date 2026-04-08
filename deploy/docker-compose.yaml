@@ -18,10 +18,12 @@ services:
       - '4001'
     environment:
       - GATEWAY_URL=${GATEWAY_URL:-http://ar-io-node-envoy-1:3000}
+      - GATEWAY_HOST=${GATEWAY_HOST:-}
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=4001
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SQLITE_PATH=/app/data/verify.db
+      - SIGNING_KEY_PATH=${SIGNING_KEY_PATH:-}
     volumes:
       - verify-data:/app/data
     networks:

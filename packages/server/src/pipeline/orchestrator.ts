@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { logger } from '../utils/logger.js';
+import { createAttestation } from '../utils/signing.js';
 import {
   verifyDataItemSignature,
   verifyDataItemSignatureRaw,
@@ -202,6 +203,7 @@ export async function runVerification(request: VerifyRequest): Promise<Verificat
       rootTransactionId: isBundled ? headers?.rootTransactionId ?? null : null,
     },
     gatewayAssessment,
+    attestation: null,
     links: {
       dashboard: `/report/${verificationId}`,
       pdf: `/api/v1/verify/${verificationId}/pdf`,
@@ -209,8 +211,11 @@ export async function runVerification(request: VerifyRequest): Promise<Verificat
     },
   };
 
+  // Sign the attestation with the operator's wallet (if configured)
+  result.attestation = createAttestation(result);
+
   logger.info(
-    { verificationId, txId, level, authenticity: authenticityStatus, existence: existence.status },
+    { verificationId, txId, level, authenticity: authenticityStatus, existence: existence.status, attested: !!result.attestation },
     'Verification complete'
   );
 
@@ -367,6 +372,7 @@ function buildNotFoundResult(verificationId: string, timestamp: string, txId: st
     metadata: { dataSize: null, contentType: null, tags: [] },
     bundle: { isBundled: false, rootTransactionId: null },
     gatewayAssessment: { verified: null, stable: null, trusted: null, hops: null },
+    attestation: null,
     links: { dashboard: null, pdf: null, rawData: null },
   };
 }

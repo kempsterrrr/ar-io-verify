@@ -10,9 +10,13 @@ const envSchema = z.object({
   // Gateway
   GATEWAY_URL: z.string().url().default('http://localhost:3000'),
   GATEWAY_TIMEOUT_MS: z.coerce.number().default(10000),
+  GATEWAY_HOST: z.string().default(''),
 
   // Database
   SQLITE_PATH: z.string().default('./data/verify.db'),
+
+  // Attestation signing (optional — skip if not set)
+  SIGNING_KEY_PATH: z.string().default(''),
 });
 
 export type Config = z.infer<typeof envSchema>;

@@ -210,6 +210,54 @@ export async function generatePdf(result: VerificationResult): Promise<Uint8Arra
     }
   }
 
+  // Gateway Attestation (only if signed)
+  if (result.attestation) {
+    y -= 16;
+    if (y < MARGIN + 180) {
+      page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - MARGIN;
+    }
+
+    // Divider
+    page.drawLine({
+      start: { x: MARGIN, y },
+      end: { x: PAGE_WIDTH - MARGIN, y },
+      thickness: 1,
+      color: rgb(0.33, 0.15, 0.78),
+    });
+    y -= 16;
+
+    y = drawText(page, 'Gateway Attestation', fontBold, 13, MARGIN, y, rgb(0.33, 0.15, 0.78));
+    y -= 8;
+
+    const attestText =
+      'This certificate is cryptographically signed by a gateway operator on the ar.io network. ' +
+      'The signature below proves that the operator attests to the verification results in this document. ' +
+      'To verify: compute SHA-256 of the attestation payload and check the RSA-PSS signature against the operator\'s public key.';
+    const aResult = drawWrappedText(page, doc, attestText, fontRegular, 8, MARGIN, y, CONTENT_WIDTH, 12, rgb(0.3, 0.3, 0.3));
+    page = aResult.page;
+    y = aResult.y;
+    y -= 12;
+
+    const att = result.attestation;
+    const attestLines = [
+      `Operator: ${att.operator}`,
+      `Gateway: ${att.gateway}`,
+      `Attested: ${att.attestedAt}`,
+      `Payload Hash: ${att.payloadHash}`,
+      `Signature: ${att.signature.substring(0, 60)}...`,
+    ];
+
+    for (const line of attestLines) {
+      if (y < MARGIN + 20) {
+        page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+        y = PAGE_HEIGHT - MARGIN;
+      }
+      y = drawText(page, line, fontRegular, 7, MARGIN, y, rgb(0.2, 0.2, 0.2));
+      y -= 3;
+    }
+  }
+
   return doc.save();
 }
 

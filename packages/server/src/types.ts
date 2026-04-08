@@ -61,6 +61,16 @@ export interface VerificationResult {
     hops: number | null;
   };
 
+  /** Operator attestation — null if no signing key configured */
+  attestation: {
+    operator: string;
+    gateway: string;
+    signature: string;
+    payloadHash: string;
+    payload: Record<string, unknown>;
+    attestedAt: string;
+  } | null;
+
   links: {
     dashboard: string | null;
     pdf: string | null;

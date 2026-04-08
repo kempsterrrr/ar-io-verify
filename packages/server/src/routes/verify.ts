@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { runVerification } from '../pipeline/orchestrator.js';
 import { saveResult, getResultById, getResultsByTxId } from '../storage/cache.js';
 import { generatePdf } from '../attestation/pdf-generator.js';
+import { getOperatorPublicKey } from '../utils/signing.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -92,6 +93,35 @@ router.get('/:id/pdf', async (req, res) => {
     logger.error({ error, id }, 'PDF generation failed');
     res.status(500).json({ error: 'PDF generation failed' });
   }
+});
+
+/**
+ * GET /api/v1/verify/:id/attestation
+ * Returns the attestation data for programmatic signature verification.
+ */
+router.get('/:id/attestation', (req, res) => {
+  const { id } = req.params;
+  const result = getResultById(id);
+
+  if (!result) {
+    res.status(404).json({ error: 'Verification result not found' });
+    return;
+  }
+
+  if (!result.attestation) {
+    res.status(404).json({ error: 'No attestation available — signing key not configured' });
+    return;
+  }
+
+  res.json({
+    operator: result.attestation.operator,
+    gateway: result.attestation.gateway,
+    signature: result.attestation.signature,
+    payloadHash: result.attestation.payloadHash,
+    payload: result.attestation.payload,
+    attestedAt: result.attestation.attestedAt,
+    operatorPublicKey: getOperatorPublicKey(),
+  });
 });
 
 export default router;

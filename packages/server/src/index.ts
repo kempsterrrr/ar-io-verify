@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { initCache, closeCache } from './storage/cache.js';
+import { initSigning } from './utils/signing.js';
 import healthRouter from './routes/health.js';
 import verifyRouter from './routes/verify.js';
 
@@ -103,6 +104,7 @@ process.on('SIGTERM', shutdown);
 // Start server
 try {
   initCache();
+  initSigning();
 
   app.listen(config.PORT, () => {
     logger.info(`Verify Sidecar running at http://localhost:${config.PORT}`);
