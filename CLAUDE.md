@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-ar.io Verify — cryptographic data verification for Arweave. Proves existence, authenticity, and authorship of data stored on the Arweave blockweave via ar.io gateways.
+ar.io Verify — cryptographic data verification for Arweave. Proves existence, authenticity, and authorship of data stored on the Arweave blockweave via ar.io gateways. Gateway operators sign attestations with their Arweave wallet.
 
 ## Commands
 
@@ -12,7 +12,7 @@ ar.io Verify — cryptographic data verification for Arweave. Proves existence, 
 pnpm install                 # Install all dependencies
 pnpm run build              # Build server + web
 pnpm run dev                # Dev server with hot reload
-pnpm run test               # Run tests
+pnpm run test               # Run tests (46 tests)
 pnpm run format             # Format code (run before commit)
 
 # Deploy alongside an ar.io gateway
@@ -23,26 +23,47 @@ cd deploy && bash start.sh
 
 ```
 packages/
-  server/    Express server: verification pipeline, PDF certificates, SQLite cache
+  server/    Express server: verification pipeline, PDF certificates, SQLite cache, attestation signing
   web/       React 19 + Vite frontend: verification UI (Tailwind CSS, served at /verify/)
 deploy/      Standalone Docker Compose deployment
 ```
 
-**Verification pipeline** (in `packages/server/src/pipeline/orchestrator.ts`):
+**Verification pipeline** (`packages/server/src/pipeline/orchestrator.ts`):
 1. HEAD /raw/ + GraphQL — in parallel (~50ms)
 2. Determine L1 tx vs ANS-104 data item
-3. Download raw data + fetch binary header
-4. RSA-PSS signature verification via deep hash
-5. Level 3 (signature) / Level 2 (hash) / Level 1 (existence only)
+3. Download raw data + fetch binary header (range request on root bundle)
+4. Signature verification: RSA-PSS (type 1), ED25519 (type 2), Ethereum ECDSA (type 3)
+5. Operator attestation — sign result with gateway wallet
 
 **Key files:**
-- `server/src/utils/crypto.ts` — deep hash, RSA-PSS, Avro tag serialization
+- `server/src/utils/crypto.ts` — deep hash, RSA-PSS, ED25519, ECDSA, Avro tag serialization
 - `server/src/utils/ans104-parser.ts` — ANS-104 binary header parser
+- `server/src/utils/signing.ts` — JWK loader, attestation builder, RSA-PSS signer
 - `server/src/gateway/client.ts` — gateway API client (HEAD, GET, GraphQL, range requests)
+- `server/src/openapi.json` — OpenAPI 3.0 spec (served at /api-docs/)
 
 ## Critical Notes
 
 1. Run `pnpm run format` before every commit
-2. The server's only unique value is **PDF signing** — everything else can run client-side
+2. The server's unique value is **PDF signing with operator wallet** — everything else could run client-side
 3. `/tx/` via Envoy always 404s for data items — use GraphQL + /raw/ headers instead
 4. Tags from HTTP headers are alphabetical (wrong order) — use GraphQL or binary header for sig verification
+5. Ethereum ECDSA (type 3) verification is implemented but may not verify all signer implementations
+6. Binary header fetch has a 3s timeout — falls back to GraphQL tags if root bundle is slow
+7. `SIGNING_KEY_PATH` is optional — server works without it, just no attestation in PDF
+
+## API Endpoints
+
+Interactive docs at `/api-docs/` (Swagger UI).
+
+- `POST /api/v1/verify` — verify a transaction
+- `GET /api/v1/verify/:id` — get cached result
+- `GET /api/v1/verify/tx/:txId` — verification history
+- `GET /api/v1/verify/:id/pdf` — PDF certificate
+- `GET /api/v1/verify/:id/attestation` — attestation for programmatic verification
+- `GET /raw/:txId` — proxy raw data from gateway
+- `GET /health` — health check
+
+## Console Integration
+
+This verify backend is consumed by the ar.io Console (`ar-io/ar-io-console`) at `/verify`. The console's `verifyApiUrl` in the store config points to this server.
