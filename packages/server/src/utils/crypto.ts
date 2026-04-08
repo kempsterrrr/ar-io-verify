@@ -1,4 +1,13 @@
-import { createHash, verify as rsaVerify, constants as cryptoConstants } from 'node:crypto';
+import {
+  createHash,
+  createPublicKey,
+  verify as rsaVerify,
+  verify as nodeVerify,
+  constants as cryptoConstants,
+} from 'node:crypto';
+// Use .js suffix for tsup/esbuild subpath resolution
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 
 /**
  * Derive an Arweave wallet address from an owner public key.
@@ -215,6 +224,98 @@ export function verifyRsaPssSignature(input: SignatureVerifyInput): boolean {
   );
 }
 
+/**
+ * Verify an ED25519 signature (signature type 2, used by Solana wallets).
+ */
+export function verifyEd25519Signature(
+  signature: Uint8Array,
+  message: Uint8Array,
+  publicKey: Uint8Array
+): boolean {
+  // DER-encode the ED25519 public key for Node.js crypto
+  // SPKI header for ED25519: 302a300506032b6570032100 + 32 bytes
+  const spkiHeader = Buffer.from('302a300506032b6570032100', 'hex');
+  const derKey = Buffer.concat([spkiHeader, Buffer.from(publicKey)]);
+
+  const key = createPublicKey({ key: derKey, format: 'der', type: 'spki' });
+  return nodeVerify(null, message, key, Buffer.from(signature));
+}
+
+/**
+ * Verify an Ethereum ECDSA signature (signature type 3).
+ * Ethereum wallets sign with signMessage() which prefixes the message
+ * with "\x19Ethereum Signed Message:\n{len}" before keccak256 hashing.
+ * This matches the arbundles EthereumSigner.verify() implementation.
+ */
+export function verifyEthereumSignature(
+  signature: Uint8Array,
+  message: Uint8Array,
+  publicKey: Uint8Array
+): boolean {
+  if (signature.length !== 65) return false;
+
+  const r = signature.slice(0, 32);
+  const s = signature.slice(32, 64);
+  const v = signature[64];
+  const recoveryId = v >= 27 ? v - 27 : v;
+
+  // Compute the Ethereum-prefixed message hash (same as ethers.hashMessage)
+  const prefix = Buffer.from(`\x19Ethereum Signed Message:\n${message.length}`);
+  const prefixedMessage = Buffer.concat([prefix, Buffer.from(message)]);
+  const messageHash = keccak_256(prefixedMessage);
+
+  try {
+    // Recover the public key from the signature + message hash
+    const sig = new secp256k1.Signature(
+      BigInt('0x' + Buffer.from(r).toString('hex')),
+      BigInt('0x' + Buffer.from(s).toString('hex'))
+    ).addRecoveryBit(recoveryId);
+
+    const recoveredPoint = sig.recoverPublicKey(messageHash);
+    const recoveredBytes = recoveredPoint.toRawBytes(false); // uncompressed 65 bytes
+
+    // Compare recovered public key to stated owner
+    if (Buffer.from(recoveredBytes).equals(Buffer.from(publicKey))) {
+      return true;
+    }
+
+    // Also compare as address: keccak256(pubkey[1:]) → last 20 bytes
+    const recoveredAddr = keccak_256(recoveredBytes.slice(1)).slice(-20);
+    const ownerAddr = keccak_256(new Uint8Array(publicKey).slice(1)).slice(-20);
+    return Buffer.from(recoveredAddr).equals(Buffer.from(ownerAddr));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify a data item signature by dispatching to the correct algorithm
+ * based on signature type.
+ */
+function verifySignatureByType(
+  signatureType: number,
+  signature: Uint8Array,
+  owner: Uint8Array,
+  message: Uint8Array
+): boolean {
+  switch (signatureType) {
+    case 1: {
+      // Arweave RSA-PSS
+      const sigB64 = bufferToBase64Url(Buffer.from(signature));
+      const ownerB64 = bufferToBase64Url(Buffer.from(owner));
+      return verifyRsaPssSignature({ signatureB64Url: sigB64, ownerB64Url: ownerB64, message });
+    }
+    case 2:
+      // ED25519 (Solana)
+      return verifyEd25519Signature(signature, message, owner);
+    case 3:
+      // Ethereum ECDSA
+      return verifyEthereumSignature(signature, message, owner);
+    default:
+      return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Data Item Signature Verification (full pipeline)
 // ---------------------------------------------------------------------------
@@ -318,6 +419,7 @@ export interface DataItemFields {
 
 export function verifyDataItemSignature(item: DataItemFields): boolean {
   const ownerBytes = base64UrlToBuffer(item.ownerB64Url);
+  const sigBytes = base64UrlToBuffer(item.signatureB64Url);
   const targetBytes = item.targetB64Url ? base64UrlToBuffer(item.targetB64Url) : new Uint8Array(0);
   const anchorBytes = item.anchorB64Url ? base64UrlToBuffer(item.anchorB64Url) : new Uint8Array(0);
 
@@ -334,11 +436,7 @@ export function verifyDataItemSignature(item: DataItemFields): boolean {
     item.data instanceof Buffer ? item.data : new Uint8Array(item.data),
   ]);
 
-  return verifyRsaPssSignature({
-    signatureB64Url: item.signatureB64Url,
-    ownerB64Url: item.ownerB64Url,
-    message,
-  });
+  return verifySignatureByType(item.signatureType, sigBytes, ownerBytes, message);
 }
 
 /**
@@ -365,12 +463,5 @@ export function verifyDataItemSignatureRaw(input: {
     input.data,
   ]);
 
-  const sigB64 = bufferToBase64Url(Buffer.from(input.signature));
-  const ownerB64 = bufferToBase64Url(Buffer.from(input.owner));
-
-  return verifyRsaPssSignature({
-    signatureB64Url: sigB64,
-    ownerB64Url: ownerB64,
-    message,
-  });
+  return verifySignatureByType(input.signatureType, input.signature, input.owner, message);
 }

@@ -18,7 +18,7 @@
 const SIG_CONFIG: Record<number, { sigLength: number; ownerLength: number }> = {
   1: { sigLength: 512, ownerLength: 512 }, // Arweave RSA-PSS 4096
   2: { sigLength: 64, ownerLength: 32 }, // ED25519
-  3: { sigLength: 64, ownerLength: 65 }, // Ethereum ECDSA
+  3: { sigLength: 65, ownerLength: 65 }, // Ethereum ECDSA
   4: { sigLength: 64, ownerLength: 49 }, // Solana ED25519
 };
 

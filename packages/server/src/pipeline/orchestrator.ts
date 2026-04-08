@@ -276,7 +276,8 @@ function attemptSignatureVerification(input: SigVerifyInput): {
   if (!ownerB64Url && !parsedHeader) {
     return { signatureValid: null, signatureSkipReason: 'No owner public key available' };
   }
-  if (ownerB64Url && ownerB64Url.length < 100 && !parsedHeader) {
+  // 43 chars = wallet address only (no public key). Longer values are valid keys for non-RSA sig types.
+  if (ownerB64Url && ownerB64Url.length <= 43 && !parsedHeader) {
     return { signatureValid: null, signatureSkipReason: 'Only wallet address available, full public key required' };
   }
 
@@ -327,12 +328,8 @@ function attemptSignatureVerification(input: SigVerifyInput): {
         });
       } else if (tagsB64.length > 0 && signatureB64Url && ownerB64Url) {
         // Fallback: GraphQL tags (correct order, re-encoded)
-        const sigType = signatureType ?? 1;
-        if (sigType !== 1) {
-          return { signatureValid: null, signatureSkipReason: `Unsupported signature type ${sigType}` };
-        }
         valid = verifyDataItemSignature({
-          signatureType: sigType,
+          signatureType: signatureType ?? 1,
           signatureB64Url,
           ownerB64Url,
           targetB64Url,
