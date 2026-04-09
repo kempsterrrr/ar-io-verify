@@ -326,8 +326,15 @@ function attemptSignatureVerification(input: SigVerifyInput): {
           rawTagBytes: parsedHeader.rawTagBytes,
           data: rawDataBytes,
         });
+      } else if ((signatureType ?? 1) !== 1 && !parsedHeader) {
+        // Non-RSA types (ED25519, ECDSA) require exact binary tags for deep hash.
+        // Re-encoded GraphQL tags may differ from original bytes, causing recovery mismatch.
+        return {
+          signatureValid: null,
+          signatureSkipReason: 'Binary header unavailable. Non-RSA signatures require exact tag bytes from the bundle.',
+        };
       } else if (tagsB64.length > 0 && signatureB64Url && ownerB64Url) {
-        // Fallback: GraphQL tags (correct order, re-encoded)
+        // RSA fallback: GraphQL tags (correct order, re-encoded) — RSA-PSS is tolerant
         valid = verifyDataItemSignature({
           signatureType: signatureType ?? 1,
           signatureB64Url,

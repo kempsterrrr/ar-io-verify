@@ -7,7 +7,7 @@ import {
 } from 'node:crypto';
 // Use .js suffix for tsup/esbuild subpath resolution
 import { secp256k1 } from '@noble/curves/secp256k1.js';
-import { keccak_256 } from '@noble/hashes/sha3.js';
+// keccak_256 no longer needed — arweave uses SHA-256 for secp256k1, not Ethereum's keccak
 
 /**
  * Derive an Arweave wallet address from an owner public key.
@@ -242,47 +242,48 @@ export function verifyEd25519Signature(
 }
 
 /**
- * Verify an Ethereum ECDSA signature (signature type 3).
- * Ethereum wallets sign with signMessage() which prefixes the message
- * with "\x19Ethereum Signed Message:\n{len}" before keccak256 hashing.
- * This matches the arbundles EthereumSigner.verify() implementation.
+ * Verify a secp256k1 ECDSA signature (signature type 3).
+ *
+ * The arweave library signs: SHA-256(deepHash) with raw ECDSA (no Ethereum prefix).
+ * Recovery: extract (r,s) + recoveryId from 65-byte sig, SHA-256 the message,
+ * recover the public key, compare to owner (compressed or uncompressed).
+ *
+ * Based on arweave/node/lib/crypto/keys/secp256k1.js SECP256k1PublicKey.recover()
  */
-export function verifyEthereumSignature(
+export function verifySecp256k1Signature(
   signature: Uint8Array,
   message: Uint8Array,
   publicKey: Uint8Array
 ): boolean {
   if (signature.length !== 65) return false;
 
-  const r = signature.slice(0, 32);
-  const s = signature.slice(32, 64);
-  const v = signature[64];
-  const recoveryId = v >= 27 ? v - 27 : v;
+  // SHA-256 the deep hash (matching arweave's isDigest:false path)
+  const digest = createHash('sha256').update(message).digest();
 
-  // Compute the Ethereum-prefixed message hash (same as ethers.hashMessage)
-  const prefix = Buffer.from(`\x19Ethereum Signed Message:\n${message.length}`);
-  const prefixedMessage = Buffer.concat([prefix, Buffer.from(message)]);
-  const messageHash = keccak_256(prefixedMessage);
+  const compactSig = signature.slice(0, 64);
+  const rawV = signature[64];
+  const recoveryId = rawV >= 27 ? rawV - 27 : rawV; // Normalize: 27/28 → 0/1
 
   try {
-    // Recover the public key from the signature + message hash
-    const sig = new secp256k1.Signature(
-      BigInt('0x' + Buffer.from(r).toString('hex')),
-      BigInt('0x' + Buffer.from(s).toString('hex'))
-    ).addRecoveryBit(recoveryId);
+    const r = BigInt('0x' + Buffer.from(compactSig.slice(0, 32)).toString('hex'));
+    const s = BigInt('0x' + Buffer.from(compactSig.slice(32, 64)).toString('hex'));
 
-    const recoveredPoint = sig.recoverPublicKey(messageHash);
-    const recoveredBytes = recoveredPoint.toRawBytes(false); // uncompressed 65 bytes
+    const sig = new secp256k1.Signature(r, s).addRecoveryBit(recoveryId);
+    const recoveredPoint = sig.recoverPublicKey(digest);
 
-    // Compare recovered public key to stated owner
-    if (Buffer.from(recoveredBytes).equals(Buffer.from(publicKey))) {
+    // Compare as uncompressed (65 bytes)
+    const recoveredUncompressed = Buffer.from(recoveredPoint.toHex(false), 'hex');
+    if (recoveredUncompressed.equals(Buffer.from(publicKey))) {
       return true;
     }
 
-    // Also compare as address: keccak256(pubkey[1:]) → last 20 bytes
-    const recoveredAddr = keccak_256(recoveredBytes.slice(1)).slice(-20);
-    const ownerAddr = keccak_256(new Uint8Array(publicKey).slice(1)).slice(-20);
-    return Buffer.from(recoveredAddr).equals(Buffer.from(ownerAddr));
+    // Compare as compressed (33 bytes)
+    const recoveredCompressed = Buffer.from(recoveredPoint.toHex(true), 'hex');
+    if (recoveredCompressed.equals(Buffer.from(publicKey))) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -309,8 +310,8 @@ function verifySignatureByType(
       // ED25519 (Solana)
       return verifyEd25519Signature(signature, message, owner);
     case 3:
-      // Ethereum ECDSA
-      return verifyEthereumSignature(signature, message, owner);
+      // secp256k1 ECDSA (Ethereum wallets)
+      return verifySecp256k1Signature(signature, message, owner);
     default:
       return false;
   }
