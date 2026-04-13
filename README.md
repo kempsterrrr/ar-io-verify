@@ -4,6 +4,8 @@ A verification sidecar for [ar.io](https://ar.io) gateways. Runs alongside your 
 
 When a user or application asks "is this data real?", the sidecar downloads the raw data from the gateway, reconstructs the cryptographic proof from scratch, and returns a verification result. If the gateway operator has configured a signing wallet, the result is also signed as an attestation — a cryptographic statement from the operator that they personally verified the data.
 
+The verification UI is built into the [ar.io Console](https://github.com/ar-io/ar-io-console) at `/verify`, where users can paste a transaction ID and see the full verification report with a downloadable PDF certificate. The sidecar also ships its own standalone web UI at `/verify/` and a REST API for programmatic access.
+
 ## How Verification Works
 
 Verification happens in three stages. Each stage builds on the previous one, and the result is assigned a level based on the strongest proof achieved.
@@ -32,9 +34,25 @@ For bundled data items (ANS-104), the sidecar fetches the binary header from the
 
 **What this proves:** the stated owner cryptographically signed this exact data. The data is authentic and has not been modified since signing. This is a mathematical proof, not a trust claim.
 
+### Quick Reference
+
+| Level | Name                | What it proves                                                 |
+| ----- | ------------------- | -------------------------------------------------------------- |
+| 3     | Verified            | Digital signature confirmed — data is authentic and untampered |
+| 2     | Partially Verified  | Data fingerprint confirmed, signature could not be checked     |
+| 1     | Existence Confirmed | Data found on the network, full verification not yet possible  |
+
 ### Operator Attestation
 
 When a gateway operator configures their Arweave wallet (`WALLET_FILE`), the sidecar signs the verification result with the operator's private key. This creates an attestation — a statement from a known operator on the ar.io network that they independently verified the data. Anyone can check this attestation by verifying the RSA-PSS signature against the operator's public key.
+
+Attestation data is included in the JSON API response, the PDF certificate, and is available via a dedicated `/attestation` endpoint for programmatic verification.
+
+## ar.io Console Integration
+
+The primary way most users interact with verification is through the [ar.io Console](https://github.com/ar-io/ar-io-console), which embeds the verify feature at `/verify`. The Console points to this sidecar's API as its backend — when a user verifies a transaction in the Console, the request flows to this service.
+
+The sidecar also ships its own standalone React web UI (served at `/verify/` on the sidecar's port) for direct access without the Console. Both UIs use the same API.
 
 ## Quick Start
 
@@ -93,6 +111,8 @@ Interactive docs: `/api-docs/`
 | `GET`  | `/health`                        | Health check                                  |
 | `GET`  | `/api-docs/`                     | Swagger UI                                    |
 
+Results are cached in SQLite, so repeated lookups for the same transaction return instantly.
+
 ## Architecture
 
 ```
@@ -112,7 +132,7 @@ deploy/      Docker Compose + nginx reverse proxy
 5. Operator attestation (if wallet configured)
 ```
 
-### Attestation
+### Attestation Format
 
 When `WALLET_FILE` is set, the operator's wallet signs a canonical attestation payload:
 
@@ -137,10 +157,6 @@ To verify: pass the canonical JSON (keys sorted alphabetically, no whitespace) t
 ```bash
 pnpm run test
 ```
-
-## Console Integration
-
-The verify feature is also available as a tool in the [ar.io Console](https://github.com/ar-io/ar-io-console) at `/verify`.
 
 ## License
 
