@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 let besleyBytes: Uint8Array | null = null;
 let jakartaBytes: Uint8Array | null = null;
 const fontPaths = [
-  join(__dirname, 'fonts'),           // dist/fonts/ (production Docker)
+  join(__dirname, 'fonts'), // dist/fonts/ (production Docker)
   join(__dirname, '..', 'src', 'attestation', 'fonts'), // from dist/ → src/ (dev)
   join(__dirname, 'attestation', 'fonts'), // src/attestation/fonts/ (tsx dev)
 ];
@@ -270,8 +270,19 @@ export async function generatePdf(result: VerificationResult): Promise<Uint8Arra
     const attestText =
       'This certificate is cryptographically signed by a gateway operator on the ar.io network. ' +
       'The signature below proves that the operator attests to the verification results in this document. ' +
-      'To verify: compute SHA-256 of the attestation payload and check the RSA-PSS signature against the operator\'s public key.';
-    const aResult = drawWrappedText(page, doc, attestText, fontRegular, 8, MARGIN, y, CONTENT_WIDTH, 12, rgb(0.3, 0.3, 0.3));
+      "To verify: compute SHA-256 of the attestation payload and check the RSA-PSS signature against the operator's public key.";
+    const aResult = drawWrappedText(
+      page,
+      doc,
+      attestText,
+      fontRegular,
+      8,
+      MARGIN,
+      y,
+      CONTENT_WIDTH,
+      12,
+      rgb(0.3, 0.3, 0.3)
+    );
     page = aResult.page;
     y = aResult.y;
     y -= 12;
@@ -300,7 +311,18 @@ export async function generatePdf(result: VerificationResult): Promise<Uint8Arra
     }
     y = drawText(page, 'Signature:', fontRegular, 7, MARGIN, y, rgb(0.2, 0.2, 0.2));
     y -= 2;
-    const sigResult = drawWrappedText(page, doc, att.signature, fontRegular, 6, MARGIN, y, CONTENT_WIDTH, 8, rgb(0.3, 0.3, 0.3));
+    const sigResult = drawWrappedText(
+      page,
+      doc,
+      att.signature,
+      fontRegular,
+      6,
+      MARGIN,
+      y,
+      CONTENT_WIDTH,
+      8,
+      rgb(0.3, 0.3, 0.3)
+    );
     page = sigResult.page;
     y = sigResult.y;
     y -= 6;
@@ -310,10 +332,32 @@ export async function generatePdf(result: VerificationResult): Promise<Uint8Arra
       page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
       y = PAGE_HEIGHT - MARGIN;
     }
-    y = drawText(page, 'Attestation Payload (canonical JSON):', fontRegular, 7, MARGIN, y, rgb(0.2, 0.2, 0.2));
+    y = drawText(
+      page,
+      'Attestation Payload (canonical JSON):',
+      fontRegular,
+      7,
+      MARGIN,
+      y,
+      rgb(0.2, 0.2, 0.2)
+    );
     y -= 2;
-    const payloadJson = JSON.stringify(att.payload, Object.keys(att.payload as Record<string, unknown>).sort());
-    const pResult = drawWrappedText(page, doc, payloadJson, fontRegular, 5, MARGIN, y, CONTENT_WIDTH, 7, rgb(0.35, 0.35, 0.35));
+    const payloadJson = JSON.stringify(
+      att.payload,
+      Object.keys(att.payload as Record<string, unknown>).sort()
+    );
+    const pResult = drawWrappedText(
+      page,
+      doc,
+      payloadJson,
+      fontRegular,
+      5,
+      MARGIN,
+      y,
+      CONTENT_WIDTH,
+      7,
+      rgb(0.35, 0.35, 0.35)
+    );
     page = pResult.page;
     y = pResult.y;
   }
@@ -414,24 +458,48 @@ function drawWrappedText(
   let line = '';
   let cp = page;
   let cy = y;
-  for (const word of words) {
-    const tl = line ? `${line} ${word}` : word;
-    if (font.widthOfTextAtSize(tl, size) > maxWidth && line) {
-      cp.drawText(line, { x, y: cy, size, font, color });
-      cy -= lineHeight;
-      if (cy < MARGIN + 20) {
-        cp = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-        cy = PAGE_HEIGHT - MARGIN;
-      }
-      line = word;
-    } else {
-      line = tl;
-    }
-  }
-  if (line) {
+
+  function flush() {
+    if (!line) return;
     cp.drawText(line, { x, y: cy, size, font, color });
     cy -= lineHeight;
+    if (cy < MARGIN + 20) {
+      cp = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      cy = PAGE_HEIGHT - MARGIN;
+    }
+    line = '';
   }
+
+  for (const word of words) {
+    // Break long words (e.g. base64 signatures, JSON) that exceed maxWidth
+    let remaining = word;
+    while (remaining) {
+      const candidate = line ? `${line} ${remaining}` : remaining;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+        line = candidate;
+        remaining = '';
+      } else if (line) {
+        // Current line is full — flush it, then retry the word on a new line
+        flush();
+      } else {
+        // Single word exceeds maxWidth — break it character by character
+        let fit = '';
+        for (const ch of remaining) {
+          const next = fit + ch;
+          if (font.widthOfTextAtSize(next, size) > maxWidth && fit) {
+            line = fit;
+            flush();
+            fit = ch;
+          } else {
+            fit = next;
+          }
+        }
+        line = fit;
+        remaining = '';
+      }
+    }
+  }
+  flush();
   return { page: cp, y: cy };
 }
 
