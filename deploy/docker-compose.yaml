@@ -23,9 +23,10 @@ services:
       - PORT=4001
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SQLITE_PATH=/app/data/verify.db
-      - SIGNING_KEY_PATH=${SIGNING_KEY_PATH:-}
+      - SIGNING_KEY_PATH=${WALLET_FILE:+/app/wallet.json}
     volumes:
       - verify-data:/app/data
+      - ${WALLET_FILE:-/dev/null}:/app/wallet.json:ro
     networks:
       - ar-io-network
     healthcheck:
