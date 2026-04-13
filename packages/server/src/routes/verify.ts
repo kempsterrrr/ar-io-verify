@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { runVerification } from '../pipeline/orchestrator.js';
 import { saveResult, getResultById, getResultsByTxId } from '../storage/cache.js';
 import { generatePdf } from '../attestation/pdf-generator.js';
 import { getOperatorPublicKey } from '../utils/signing.js';
 import { logger } from '../utils/logger.js';
 
-const router = Router();
+const router: RouterType = Router();
 
 const TX_ID_PATTERN = /^[a-zA-Z0-9_-]{43}$/;
 
