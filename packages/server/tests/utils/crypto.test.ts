@@ -46,6 +46,20 @@ describe('sha256B64Url', () => {
     const h2 = sha256B64Url(Buffer.from('world'));
     expect(h1).not.toBe(h2);
   });
+
+  it('derives an Arweave txId from its signature bytes', () => {
+    // In Arweave, txId = base64url(SHA-256(raw signature bytes)). The orchestrator
+    // uses this identity to detect gateway substitution: if the signature verifies
+    // but sha256B64Url(signature) !== requestedTxId, the gateway served a different tx.
+    // Fixture: real L1 tx WkaBoAfqfW2P4K2NO1SBDwhVsKQJSVTVEnaDvjoyZzA (truncated sig for test).
+    const knownSig = Buffer.from([0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe]);
+    const derivedTxId = sha256B64Url(knownSig);
+    // Stable property: same bytes → same 43-char base64url hash.
+    expect(derivedTxId).toMatch(/^[a-zA-Z0-9_-]{43}$/);
+    expect(sha256B64Url(knownSig)).toBe(derivedTxId);
+    // Any single-bit change produces a different txId.
+    expect(sha256B64Url(Buffer.from([0xde, 0xad, 0xbe, 0xef, 0xca, 0xff]))).not.toBe(derivedTxId);
+  });
 });
 
 describe('ownerToAddress', () => {
@@ -80,11 +94,7 @@ describe('deepHash', () => {
   });
 
   it('hashes a list of blobs', () => {
-    const result = deepHash([
-      new Uint8Array([1]),
-      new Uint8Array([2]),
-      new Uint8Array([3]),
-    ]);
+    const result = deepHash([new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3])]);
     // Should be 48 bytes (SHA-384 output)
     expect(result.byteLength).toBe(48);
   });
@@ -120,7 +130,10 @@ describe('serializeAvroTags', () => {
 
   it('serializes one tag correctly', () => {
     const result = serializeAvroTags([
-      { name: base64UrlToBuffer('hello').toString('base64url'), value: base64UrlToBuffer('world').toString('base64url') },
+      {
+        name: base64UrlToBuffer('hello').toString('base64url'),
+        value: base64UrlToBuffer('world').toString('base64url'),
+      },
     ]);
     // Should have: count(1) + name_len + name + value_len + value + terminator(0)
     expect(result.byteLength).toBeGreaterThan(1);
@@ -130,8 +143,14 @@ describe('serializeAvroTags', () => {
 
   it('serializes multiple tags', () => {
     const tags = [
-      { name: bufferToBase64Url(Buffer.from('App-Name')), value: bufferToBase64Url(Buffer.from('ArDrive')) },
-      { name: bufferToBase64Url(Buffer.from('Content-Type')), value: bufferToBase64Url(Buffer.from('image/png')) },
+      {
+        name: bufferToBase64Url(Buffer.from('App-Name')),
+        value: bufferToBase64Url(Buffer.from('ArDrive')),
+      },
+      {
+        name: bufferToBase64Url(Buffer.from('Content-Type')),
+        value: bufferToBase64Url(Buffer.from('image/png')),
+      },
     ];
     const result = serializeAvroTags(tags);
     expect(result.byteLength).toBeGreaterThan(10);

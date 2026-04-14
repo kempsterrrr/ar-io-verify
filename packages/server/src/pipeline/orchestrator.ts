@@ -6,6 +6,7 @@ import {
   verifyDataItemSignature,
   verifyDataItemSignatureRaw,
   verifyTransactionSignature,
+  base64UrlToBuffer,
   bufferToBase64Url,
   ownerToAddress,
   sha256B64Url,
@@ -383,6 +384,31 @@ async function attemptSignatureVerification(input: SigVerifyInput): Promise<{
           signatureValid: null,
           signatureSkipReason: 'Insufficient data for signature verification',
         };
+      }
+    }
+
+    // If the signature verified, also confirm the data we verified actually
+    // corresponds to the requested txId. In Arweave, txId = base64url(SHA-256(signature)),
+    // so a gateway that substitutes a different transaction's data would produce
+    // a verifying signature for the wrong txId.
+    if (valid) {
+      const sigBytes =
+        parsedHeader?.signature ??
+        (l1TxData?.signature ? base64UrlToBuffer(l1TxData.signature) : null) ??
+        (signatureB64Url ? base64UrlToBuffer(signatureB64Url) : null);
+
+      if (sigBytes) {
+        const derivedTxId = sha256B64Url(Buffer.from(sigBytes));
+        if (derivedTxId !== txId) {
+          logger.warn(
+            { verificationId, requestedTxId: txId, derivedTxId },
+            'Signature verified but txId mismatch — gateway may have substituted a different transaction'
+          );
+          return {
+            signatureValid: false,
+            signatureSkipReason: `Transaction ID mismatch: signature hashes to ${derivedTxId}, not the requested ${txId}. The gateway may have served data for a different transaction.`,
+          };
+        }
       }
     }
 
