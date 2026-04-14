@@ -21,8 +21,6 @@ vi.mock('../../src/utils/logger.js', () => ({
 }));
 
 import txResponse from '../fixtures/tx-response.json';
-import txStatus from '../fixtures/tx-status.json';
-import blockResponse from '../fixtures/block-response.json';
 
 describe('Gateway Client', () => {
   const originalFetch = globalThis.fetch;
@@ -47,26 +45,6 @@ describe('Gateway Client', () => {
     const { getTransaction } = await import('../../src/gateway/client.js');
     const tx = await getTransaction('nonexistent');
     expect(tx).toBeNull();
-  });
-
-  it('getTransactionStatus returns parsed status', async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify(txStatus), { status: 200 })) as typeof fetch;
-
-    const { getTransactionStatus } = await import('../../src/gateway/client.js');
-    const status = await getTransactionStatus('test-tx');
-    expect(status).not.toBeNull();
-    expect(status!.block_height).toBe(1438221);
-  });
-
-  it('getBlock returns parsed block', async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify(blockResponse), { status: 200 })) as typeof fetch;
-
-    const { getBlock } = await import('../../src/gateway/client.js');
-    const block = await getBlock(1438221);
-    expect(block).not.toBeNull();
-    expect(block!.height).toBe(1438221);
   });
 
   it('headRawData returns all header fields', async () => {
@@ -144,7 +122,9 @@ describe('Gateway Client', () => {
 
   it('getTransactionViaGraphQL returns null when not found', async () => {
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ data: { transaction: null } }), { status: 200 })) as typeof fetch;
+      new Response(JSON.stringify({ data: { transaction: null } }), {
+        status: 200,
+      })) as typeof fetch;
 
     const { getTransactionViaGraphQL } = await import('../../src/gateway/client.js');
     const result = await getTransactionViaGraphQL('nonexistent');

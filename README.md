@@ -75,6 +75,8 @@ bash start.sh
 
 ### Environment Variables
 
+The table below covers the Docker Compose deployment (`deploy/.env`). If you're running the server directly without Docker, use `SIGNING_KEY_PATH` instead of `WALLET_FILE` (Compose maps one to the other) and `PORT` instead of `VERIFY_PORT` (the internal sidecar always listens on `PORT`; `VERIFY_PORT` just controls the public nginx port).
+
 | Variable             | Default                          | Description                                                                                                                 |
 | -------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `GATEWAY_URL`        | `http://ar-io-node-envoy-1:3000` | ar.io gateway URL (must be reachable from the container)                                                                    |

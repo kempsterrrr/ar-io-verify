@@ -1,12 +1,7 @@
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { fetchWithTimeout } from '../utils/http.js';
-import type {
-  GatewayTransaction,
-  GatewayTransactionStatus,
-  GatewayBlock,
-  RawDataHeaders,
-} from './types.js';
+import type { GatewayTransaction, RawDataHeaders } from './types.js';
 
 const baseUrl = config.GATEWAY_URL.replace(/\/$/, '');
 const timeout = config.GATEWAY_TIMEOUT_MS;
@@ -27,36 +22,6 @@ export async function getTransaction(txId: string): Promise<GatewayTransaction |
     return (await res.json()) as GatewayTransaction;
   } catch (error) {
     logger.error({ error, txId }, 'Failed to fetch transaction');
-    return null;
-  }
-}
-
-export async function getTransactionStatus(txId: string): Promise<GatewayTransactionStatus | null> {
-  try {
-    const res = await fetchWithTimeout(`${baseUrl}/tx/${txId}/status`, timeout);
-    if (res.status === 404) return null;
-    if (!res.ok) {
-      logger.warn({ status: res.status, txId }, 'Unexpected response from GET /tx/status');
-      return null;
-    }
-    return (await res.json()) as GatewayTransactionStatus;
-  } catch (error) {
-    logger.error({ error, txId }, 'Failed to fetch transaction status');
-    return null;
-  }
-}
-
-export async function getBlock(height: number): Promise<GatewayBlock | null> {
-  try {
-    const res = await fetchWithTimeout(`${baseUrl}/block/height/${height}`, timeout);
-    if (res.status === 404) return null;
-    if (!res.ok) {
-      logger.warn({ status: res.status, height }, 'Unexpected response from GET /block/height');
-      return null;
-    }
-    return (await res.json()) as GatewayBlock;
-  } catch (error) {
-    logger.error({ error, height }, 'Failed to fetch block');
     return null;
   }
 }
@@ -253,8 +218,15 @@ export async function getTransactionViaGraphQL(txId: string): Promise<{
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      logger.warn({ status: res.status, txId }, 'GraphQL request failed');
+      return null;
+    }
     const data = await res.json();
+    if (data?.errors) {
+      logger.warn({ errors: data.errors, txId }, 'GraphQL returned errors');
+      return null;
+    }
     const tx = data?.data?.transaction;
     if (!tx) return null;
     return {
@@ -266,7 +238,8 @@ export async function getTransactionViaGraphQL(txId: string): Promise<{
         ? new Date(tx.block.timestamp * 1000).toISOString()
         : null,
     };
-  } catch {
+  } catch (error) {
+    logger.warn({ error, txId }, 'GraphQL query threw');
     return null;
   }
 }
